@@ -9,6 +9,10 @@ wheels/
 # Virtual environments
 .venv
 
-# Cursor.md
+# Cursor configuration files
 cursor.md
-cursor-compact.md
+cursor-indepth.md
+.cursorrules
+
+# Environment variables
+.env
