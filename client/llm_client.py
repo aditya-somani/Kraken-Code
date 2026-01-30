@@ -15,7 +15,7 @@ load_dotenv()
 class LLMClient:
     def __init__(self) -> None:
         self._client : AsyncOpenAI | None = None
-        self._max_retries : int = os.getenv("MAX_RETRIES", 3)
+        self._max_retries : int = int(os.getenv("MAX_RETRIES", 3))
         self._model : str = os.getenv("MODEL", "")
 
     # We are not coupling the model when we are creating the client. So that afterwards, We can choose different models for different messages instead of having a same model.
