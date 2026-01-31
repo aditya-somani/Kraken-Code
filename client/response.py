@@ -62,6 +62,34 @@ class StreamEvent:
     finish_reason: str | None = None
     usage: TokenUsage | None = None
 
+    @classmethod
+    def stream_error(cls, error: str) -> StreamEvent:
+        return cls(
+            type=EventType.ERROR,
+            error=error
+        )
+
+    @classmethod
+    def stream_text(cls, content: str) -> StreamEvent:
+        return cls(
+            type=EventType.TEXT_DELTA,
+            text_delta=TextDelta(content=content),
+        )
+
+    @classmethod
+    def stream_message_complete(
+        cls,
+        finish_reason: str,
+        usage: TokenUsage,
+        text_delta: TextDelta | None = None
+    ) -> StreamEvent:
+        return cls(
+            type=EventType.MESSAGE_COMPLETE,
+            finish_reason=finish_reason,
+            usage=usage,
+            text_delta=text_delta,
+        )
+
 
 """
 Example: ChatCompletion Response Structure from OpenRouter API : Non-Streaming Case

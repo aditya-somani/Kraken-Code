@@ -1,8 +1,9 @@
+from typing import AsyncGenerator
+from agent.event import AgentEvent
 
 # Agent Class: The blueprint (the "brain") that maintains the state of a conversation, handles API calls, 
 # and decides which tools to trigger based on the user's request.
 # This is the middle layer between the user and the LLM. It will manage everything.
-from typing import AsyncGenerator
 class Agent:
     def __init__(self):
         pass

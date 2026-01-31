@@ -4,7 +4,7 @@ import os
 from dotenv import load_dotenv
 import asyncio
 
-from client.response import EventType, StreamEvent, TextDelta, TokenUsage
+from client.response import StreamEvent, TextDelta, TokenUsage
 
 load_dotenv()
 
@@ -66,10 +66,7 @@ class LLMClient:
                     delay = 2 ** attempt # 2 ^ attempt
                     await asyncio.sleep(delay)
                 else:
-                    yield StreamEvent(
-                        type=EventType.ERROR,
-                        error=f"Rate limit error: {e}",
-                    )
+                    yield StreamEvent.stream_error(error=f"Rate limit error: {e}")
                     return
 
             except APIConnectionError as e:
@@ -77,19 +74,13 @@ class LLMClient:
                     delay = 2 ** attempt # 2 ^ attempt
                     await asyncio.sleep(delay)
                 else:
-                    yield StreamEvent(
-                        type=EventType.ERROR,
-                        error=f"API connection error: {e}",
-                    )
+                    yield StreamEvent.stream_error(error=f"API connection error: {e}")
                     return
 
             except APIError as e:
                 # It acts as an umbrella for anything that goes wrong on the provider's side or during the transit of data.
                 # No retries for this, just show error and return. It is a permanent error. Not a transient error like rate limit or connection error.
-                yield StreamEvent(
-                    type=EventType.ERROR,
-                    error=f"API error: {e}",
-                )
+                yield StreamEvent.stream_error(error=f"API error: {e}")
                 return
 
     async def _stream_response(
@@ -125,15 +116,11 @@ class LLMClient:
                 finish_reason = choice.finish_reason
 
             if delta.content:
-                yield StreamEvent(
-                    type=EventType.TEXT_DELTA,
-                    text_delta=TextDelta(delta.content),
-                )
+                yield StreamEvent.stream_text(content=delta.content)
 
-        yield StreamEvent(
-            type=EventType.MESSAGE_COMPLETE,
-            usage=usage,
-            finish_reason=finish_reason,
+        yield StreamEvent.stream_message_complete(
+            finish_reason=finish_reason, 
+            usage=usage
         )
     
     async def _non_stream_response(
@@ -163,8 +150,7 @@ class LLMClient:
                 cached_tokens=response.usage.prompt_tokens_details.cached_tokens,
             )
 
-        return StreamEvent(
-            type=EventType.MESSAGE_COMPLETE,
+        return StreamEvent.stream_message_complete(
             finish_reason=finish_reason,
             usage=usage,
             text_delta=text_delta,
