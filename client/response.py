@@ -24,7 +24,7 @@ class TextDelta:
     # return this specific text("Hello, world!") instead of the default gibberish i.e. something like <response.TextDelta object at 0x7f81b0>"
 
 # Labels that tell the system exactly what kind of event is happening right now (e.g., text is arriving, or an error occurred).
-class EventType(StrEnum):
+class StreamEventType(StrEnum):
     TEXT_DELTA = "text_delta" # Tiny chunks of text arriving
     MESSAGE_COMPLETE = "message_complete" # The full response has arrived
     ERROR = "error" # An error occurred 
@@ -56,7 +56,7 @@ class TokenUsage:
 
 @dataclass
 class StreamEvent:
-    type: EventType
+    type: StreamEventType
     text_delta: TextDelta | None = None # None in cases like when there is a tool call and such.
     error: str | None = None
     finish_reason: str | None = None
@@ -65,14 +65,14 @@ class StreamEvent:
     @classmethod
     def stream_error(cls, error: str) -> StreamEvent:
         return cls(
-            type=EventType.ERROR,
+            type=StreamEventType.ERROR,
             error=error
         )
 
     @classmethod
     def stream_text(cls, content: str) -> StreamEvent:
         return cls(
-            type=EventType.TEXT_DELTA,
+            type=StreamEventType.TEXT_DELTA,
             text_delta=TextDelta(content=content),
         )
 
@@ -84,7 +84,7 @@ class StreamEvent:
         text_delta: TextDelta | None = None
     ) -> StreamEvent:
         return cls(
-            type=EventType.MESSAGE_COMPLETE,
+            type=StreamEventType.MESSAGE_COMPLETE,
             finish_reason=finish_reason,
             usage=usage,
             text_delta=text_delta,
