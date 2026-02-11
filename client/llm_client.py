@@ -1,3 +1,11 @@
+"""
+This module provides the LLMClient for interacting with Large Language Models.
+
+It wraps the AsyncOpenAI client to provide a consistent interface for both
+streaming and non-streaming chat completions, with built-in retry logic
+and error handling.
+"""
+
 from typing import Any, AsyncGenerator
 from openai import APIConnectionError, APIError, AsyncOpenAI, RateLimitError
 import os
@@ -13,13 +21,28 @@ load_dotenv()
 
 
 class LLMClient:
+    """
+    A client for managing communications with an LLM provider.
+    
+    Handles initialization, connection management, and execution of chat completion 
+    requests with robust error handling and retry mechanisms.
+    """
     def __init__(self) -> None:
+        """Initializes the LLMClient with environment-based configuration."""
         self._client : AsyncOpenAI | None = None
         self._max_retries : int = int(os.getenv("MAX_RETRIES", 3))
         self._model : str = os.getenv("MODEL", "")
 
-    # We are not coupling the model when we are creating the client. So that afterwards, We can choose different models for different messages instead of having a same model.
     def get_client(self) -> AsyncOpenAI:
+        """
+        Lazily initializes and returns the AsyncOpenAI client.
+
+        This ensures the client is only created when needed, using the 
+        OpenRouter API key and base URL from environment variables.
+
+        Returns:
+            The initialized AsyncOpenAI client.
+        """
         if self._client is None:
             self._client = AsyncOpenAI(
                 api_key=os.getenv("OPENROUTER_API_KEY", ""),
@@ -28,6 +51,7 @@ class LLMClient:
         return self._client            
 
     async def close(self) -> None:
+        """Closes the underlying HTTP client and resets the client state."""
         if self._client:
             await self._client.close()
             self._client = None
@@ -37,6 +61,20 @@ class LLMClient:
         messages: list[dict[str, Any]],
         stream: bool = True,
     ) -> AsyncGenerator[StreamEvent, None]:
+        """
+        Sends a chat completion request and yields the result as events.
+
+        This is the primary method for interacting with the LLM. It supports
+        both streaming and non-streaming modes and implements exponential backoff
+        for transient errors like rate limits and connection issues.
+
+        Args:
+            messages: A list of message dictionaries (OpenAI format).
+            stream: Whether to stream the response or wait for completion.
+
+        Yields:
+            StreamEvent: Events representing text deltas, completion, or errors.
+        """
 
         client = self.get_client()
         kwargs = {
@@ -88,6 +126,19 @@ class LLMClient:
         client: AsyncOpenAI,
         kwargs: dict[str, Any]
     ) -> AsyncGenerator[StreamEvent, None]: 
+        """
+        Internal method to handle the complexities of streaming responses.
+
+        Processes chunks as they arrive, extracts text deltas, and handles
+        final usage stats and termination reasons.
+
+        Args:
+            client: The AsyncOpenAI client.
+            kwargs: Arguments for the completion call.
+
+        Yields:
+            StreamEvent: Text deltas and final completion event.
+        """
 
         # There will be only one finish reason and one usage for the entire response.
         finish_reason : str | None = None
@@ -128,6 +179,19 @@ class LLMClient:
         client: AsyncOpenAI,
         kwargs: dict[str, Any],
     ) -> StreamEvent:
+        """
+        Internal method to handle non-streaming responses.
+
+        Collects the entire response at once and packages it into a 
+        consistent StreamEvent structure.
+
+        Args:
+            client: The AsyncOpenAI client.
+            kwargs: Arguments for the completion call.
+
+        Returns:
+            A StreamEvent containing the complete response and usage stats.
+        """
         response = await client.chat.completions.create(**kwargs)
         choices = response.choices[0]
         
@@ -156,8 +220,7 @@ class LLMClient:
             text_delta=text_delta,
         )
 
-        
-
+         
 
 """
 Example: ChatCompletion Response Structure from OpenRouter API : Non-Streaming Case

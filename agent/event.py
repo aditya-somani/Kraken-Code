@@ -1,3 +1,10 @@
+"""
+This module defines the events used by the Agent to communicate its internal state.
+
+These events provide granular feedback to the user interface, allowing for
+a transparent "glass box" view of the agent's internal reasoning and actions.
+"""
+
 from __future__ import annotations
 from client.response import TokenUsage
 from typing import Any
@@ -6,6 +13,11 @@ from enum import StrEnum
 
 # @dataclass
 class AgentEventType(StrEnum):
+    """
+    Available types of events the Agent can emit.
+    
+    Categorized by lifecycle stages and streaming feedback.
+    """
     # Agent Lifecycle
     AGENT_START = "agent_start"
     AGENT_END = "agent_end"
@@ -18,11 +30,19 @@ class AgentEventType(StrEnum):
 
 @dataclass
 class AgentEvent:
+    """
+    A structured message emitted by the Agent.
+
+    Attributes:
+        type: The category of the event (START, END, DELTA, etc.).
+        data: A dictionary containing event-specific information (e.g., content, error details).
+    """
     type: AgentEventType
     data: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def agent_start(cls, message: str) -> AgentEvent:
+        """Creates an event signaling the start of an agent interaction."""
         return cls(
             type=AgentEventType.AGENT_START,
             data={"message": message},
@@ -34,6 +54,7 @@ class AgentEvent:
         response: str | None = None,
         usage: TokenUsage | None = None,
     ) -> AgentEvent:
+        """Creates an event signaling the completion of an agent interaction."""
         return cls(
             type=AgentEventType.AGENT_END,
             data={
@@ -48,6 +69,7 @@ class AgentEvent:
         error: str,
         details: str | None = None
     ) -> AgentEvent:
+        """Creates an event signaling that an error occurred."""
         return cls(
             type=AgentEventType.AGENT_ERROR,
             data={
@@ -58,6 +80,7 @@ class AgentEvent:
 
     @classmethod
     def text_delta(cls, content: str) -> AgentEvent:
+        """Creates an event containing a chunk of generated text."""
         return cls(
             type=AgentEventType.TEXT_DELTA,
             data={"content": content},
@@ -65,6 +88,7 @@ class AgentEvent:
 
     @classmethod
     def text_complete(cls, content: str) -> AgentEvent:
+        """Creates an event containing the final completed text response."""
         return cls(
             type=AgentEventType.TEXT_COMPLETE,
             data={"content": content},
