@@ -6,6 +6,7 @@ for converting internal message representations into the dictionary format
 required by LLM APIs.
 """
 
+from dataclasses import field
 from typing import Any
 from utils.text import count_tokens
 from prompts.system_prompt import get_system_prompt
@@ -23,10 +24,14 @@ class MessageItem:
     Attributes:
         role: The role of the speaker (e.g., "user", "assistant", "system").
         content: The text content of the message.
+        tool_call_id: The ID of the tool call.
+        tool_calls: A list of tool calls.
         token_count: The number of tokens occupied by this message (optional).
     """
     role: str
     content: str
+    tool_call_id: str | None = None
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
     token_count: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -40,6 +45,12 @@ class MessageItem:
         """
 
         result: dict[str, Any] = {"role": self.role}
+
+        if self.tool_call_id:
+            result["tool_call_id"] = self.tool_call_id
+
+        if self.tool_calls:
+            result["tool_calls"] = self.tool_calls
 
         if self.content:
             result["content"] = self.content
@@ -86,7 +97,23 @@ class ContextManager:
         item = MessageItem(
             role="assistant",
             content=message or "",
-            token_count=count_tokens(message, self._model)
+            token_count=count_tokens(message or "", self._model)
+        )
+        self._messages.append(item)
+
+    def add_tool_result(self, tool_call_id: str, content: str) -> None:
+        """
+        Adds a tool result to the conversation history.
+
+        Args:
+            tool_call_id: The ID of the tool call.
+            content: The content of the tool result.
+        """
+        item = MessageItem(
+            role="tool",
+            content=content,
+            tool_call_id=tool_call_id,
+            token_count=count_tokens(content, self._model)
         )
         self._messages.append(item)
 

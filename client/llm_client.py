@@ -6,13 +6,15 @@ streaming and non-streaming chat completions, with built-in retry logic
 and error handling.
 """
 
+from client.response import ToolCallDelta
+from client.response import StreamEventType
 from typing import Any, AsyncGenerator
 from openai import APIConnectionError, APIError, AsyncOpenAI, RateLimitError
 import os
 from dotenv import load_dotenv
 import asyncio
 
-from client.response import StreamEvent, TextDelta, TokenUsage
+from client.response import StreamEvent, TextDelta, TokenUsage, ToolCall, ToolCallDelta, parse_tool_call_arguments
 
 load_dotenv()
 
@@ -56,9 +58,38 @@ class LLMClient:
             await self._client.close()
             self._client = None
 
+    def _build_tools(self, tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """
+        Builds the tools list in the format required by the LLM client.
+
+        Args:
+            tools: A list of tools to build.
+
+        Returns:
+            A list of tools for the LLM client.
+        """
+        return [
+            {
+                'type': 'function',
+                'function': {
+                    'name': tool.get('name', ''),
+                    'description': tool.get('description', ''),
+                    'parameters': tool.get(
+                        'parameters', 
+                        {
+                            'type': 'object', 
+                            'properties': {},
+                        }
+                    ),
+                }
+            }
+            for tool in tools
+        ]
+
     async def chat_completion(
         self,
         messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
         stream: bool = True,
     ) -> AsyncGenerator[StreamEvent, None]:
         """
@@ -70,6 +101,7 @@ class LLMClient:
 
         Args:
             messages: A list of message dictionaries (OpenAI format).
+            tools: A list of tool schemas for the LLM to use.
             stream: Whether to stream the response or wait for completion.
 
         Yields:
@@ -82,6 +114,10 @@ class LLMClient:
             "messages": messages,
             "stream": stream,
         }
+
+        if tools:
+            kwargs["tools"] = self._build_tools(tools)
+            kwargs["tool_choice"] = "auto"
         
         for attempt in range(self._max_retries + 1):
             try:
@@ -143,6 +179,7 @@ class LLMClient:
         # There will be only one finish reason and one usage for the entire response.
         finish_reason : str | None = None
         usage : TokenUsage | None = None
+        tool_calls : dict[int, dict[str, Any]] = {}
 
         response = await client.chat.completions.create(**kwargs)
         # Iterating over the chunks of the response.
@@ -168,6 +205,53 @@ class LLMClient:
 
             if delta.content:
                 yield StreamEvent.stream_text(content=delta.content)
+        
+            # Look at the end of file for the structure we get as response to understand the intuition of
+            # why we are doing this like this.
+            if delta.tool_calls:
+                # It is a list of tool calls. We iterate over it.
+                for tool_call_delta in delta.tool_calls:
+                    idx = tool_call_delta.index
+
+                    # If the tool call index is not in the tool calls dictionary, then we add it.
+                    # INITIALIZE the box only once (first chunk for this tool call).
+                    if idx not in tool_calls:
+                        tool_calls[idx] = {
+                            "id": tool_call_delta.id or "",
+                            "name": "",
+                            "arguments": "",
+                        }
+
+                    # PROCESS every chunk (runs for ALL chunks, not just the first).
+                    if tool_call_delta.function:
+                        # The name typically only arrives in the very first chunk.
+                        if tool_call_delta.function.name:
+                            tool_calls[idx]["name"] = tool_call_delta.function.name
+                            yield StreamEvent.stream_tool_call_start(
+                                call_id=tool_calls[idx]["id"],
+                                name=tool_call_delta.function.name,
+                            )
+                        
+                    # Arguments stream in over multiple chunks — must be outside the 'if idx not in' block.
+                    if tool_call_delta.function.arguments:
+                        tool_calls[idx]["arguments"] += tool_call_delta.function.arguments
+                        yield StreamEvent.stream_tool_call_delta(
+                            call_id=tool_calls[idx]["id"],
+                            name=tool_calls[idx]["name"],
+                            # Pass just this chunk's new piece, not the whole accumulated string.
+                            arguments_delta=tool_call_delta.function.arguments,
+                        )
+
+        # If the tool call has a name and arguments, then we yield a tool call complete event.
+        for idx, tc in tool_calls.items():
+            if tc["name"] and tc["arguments"]:
+                yield StreamEvent.stream_tool_call_complete(
+                    call_id=tc["id"],
+                    name=tc["name"],
+                    # Now we have to convert the arguments from str to dict but what if the arguments are not valid json?
+                    # Hence we are making a parser for it.
+                    arguments=parse_tool_call_arguments(tc["arguments"]),
+                )
 
         yield StreamEvent.stream_message_complete(
             finish_reason=finish_reason, 
@@ -205,6 +289,17 @@ class LLMClient:
         if message.content:
             text_delta = TextDelta(message.content)
 
+        tool_calls: list[ToolCall] = []
+        if message.tool_calls:
+            for tool_call in message.tool_calls:
+                tool_calls.append(
+                    ToolCall(
+                        call_id=tool_call.call_id,
+                        name=tool_call.function.name,
+                        arguments=parse_tool_call_arguments(tool_call.function.arguments),
+                    )
+                )
+
         usage = None
         if response.usage:
             usage = TokenUsage(
@@ -220,7 +315,34 @@ class LLMClient:
             text_delta=text_delta,
         )
 
-         
+
+"""
+Output for tool call:
+[ChoiceDeltaToolCall(
+    index=0, 
+    id='call_41b2c2b984c8451da86e70d8', 
+    function=ChoiceDeltaToolCallFunction(arguments='', name='read_file'), 
+    type='function'
+)]
+[ChoiceDeltaToolCall(
+    index=0, 
+    id=None, 
+    function=ChoiceDeltaToolCallFunction(arguments='{', name=None), 
+    type='function'
+)]
+[ChoiceDeltaToolCall(
+    index=0, 
+    id=None, 
+    function=ChoiceDeltaToolCallFunction(arguments='"path": "main.py"', name=None), 
+    type='function'
+)]
+[ChoiceDeltaToolCall(
+    index=0, 
+    id=None, 
+    function=ChoiceDeltaToolCallFunction(arguments='}', name=None), 
+    type='function'
+)] 
+"""     
 
 """
 Example: ChatCompletion Response Structure from OpenRouter API : Non-Streaming Case

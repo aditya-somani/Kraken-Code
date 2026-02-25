@@ -1,16 +1,26 @@
 """
-This module defines the foundational building blocks for the Kraken Code tool system.
+This module defines the foundational building blocks for the Kraken Code `Tool` system.
 
 It provides the base classes and enums needed to define, validate, and execute tools
 that the agent can use to interact with the environment.
 """
 
+# NOTE: Go to the end of file, for viewing schema accepted by OpenAI. 
+# We keep the tool definition separate from the provider schema (OpenAI/Anthropic).
+# 1. base.py defines the 'Contract' (What the tool does and what data it needs).
+# 2. The LLM Client (e.g., openai_client.py) transforms this contract into a 
+#    specific JSON format (the Schema) that the model understands.
+#
+# This allows us to switch LLM providers without touching the core tool logic.
+# The 'parameters' field below uses Pydantic to provide a source of truth 
+# from which ANY provider-specific schema can be generated.
+
+from __future__ import annotations
 from pydantic.json_schema import model_json_schema
 from pydantic import ValidationError
-from dataclasses import Field
+from dataclasses import field
 from pathlib import Path
 from dataclasses import dataclass
-from __future__ import annotations
 from pydantic import BaseModel
 from typing import Any
 from enum import StrEnum
@@ -40,11 +50,56 @@ class ToolResult:
         output: The primary textual output or result of the tool.
         error: A descriptive error message if success is False.
         metadata: Additional structured data returned by the tool (e.g., file stats).
+        truncated: Whether the output was truncated.
     """
     success: bool
     output: str
     error: str | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    truncated: bool = False
+
+    @classmethod
+    def error_result(
+        cls,
+        error: str,
+        output: str="",
+        **kwargs
+    ) -> ToolResult:
+        """
+        Creates an error result.
+
+        Args:
+            error: The error message.
+            output: The output of the tool.
+        Returns:
+            ToolResult: An error result.
+        """
+        return cls(success=False, error=error, output=output, **kwargs)
+
+    @classmethod
+    def success_result(
+        cls,
+        output: str = "",
+        **kwargs
+    ) -> ToolResult:
+        """
+        Creates a success result.
+
+        Args:
+            output: The output of the tool.
+            **kwargs: Additional keyword arguments.
+        Returns:
+            ToolResult: A success result.
+        """
+        return cls(success=True, output=output, error=None, **kwargs)
+
+    # This is for formatting the output in a format the model will like/easy to parse.
+    def to_model_output(self) -> str:
+        """Formats the output for the model."""
+        if self.success:
+            return self.output
+        else:
+            return f"Error: {self.error}\n\nOutput:\n{self.output}"
 
 @dataclass
 class ToolInvokation:
@@ -99,10 +154,11 @@ class Tool(abc.ABC):
         # Due to the fact that we are using pydantic models, we can use pydantic validators to validate the params.
         raise NotImplementedError("The tool must define schema property or class attribute.")
 
-    @abc.abstractmethod
+    @abc.abstractmethod # Method must be implemented by subclasses.
     async def execute(self, invocation: ToolInvokation) -> ToolResult:
         """
         Executes the tool's core logic.
+        Must be implemented by subclasses.
 
         Args:
             invocation: The parameters and environment context for this specific run.
@@ -126,7 +182,7 @@ class Tool(abc.ABC):
         schema = self.schema
         if isinstance(schema, type) and issubclass(schema, BaseModel):
             try:
-                BaseModel(**params)
+                schema(**params)
             except ValidationError as e:
                 errors = []
                 for error in e.errors():
@@ -211,4 +267,24 @@ class Tool(abc.ABC):
         raise ValueError(f"Invalid schema type for tool {self.name}: {type(schema)}")
 
     
-    
+"""
+tools: array of map[unknown]
+A list of tool definitions that the model should be allowed to call.
+
+For the Chat Completions API, the list of tool definitions might look like:
+
+[
+  { 
+    "type": "function", 
+    "function": { 
+        "name": "get_weather",
+    } 
+  },
+  { 
+    "type": "function", 
+    "function": { 
+        "name": "get_time" 
+    } 
+  }
+]
+"""

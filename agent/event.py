@@ -7,6 +7,7 @@ a transparent "glass box" view of the agent's internal reasoning and actions.
 
 from __future__ import annotations
 from client.response import TokenUsage
+from tools.base import ToolResult
 from typing import Any
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -22,6 +23,10 @@ class AgentEventType(StrEnum):
     AGENT_START = "agent_start"
     AGENT_END = "agent_end"
     AGENT_ERROR = "agent_error"
+
+    # Tool Streaming
+    TOOL_CALL_START = "tool_call_start"
+    TOOL_CALL_COMPLETE = "tool_call_complete"
 
     # Text Streaming
     TEXT_DELTA = "text_delta"
@@ -92,6 +97,34 @@ class AgentEvent:
         return cls(
             type=AgentEventType.TEXT_COMPLETE,
             data={"content": content},
+        )
+
+    @classmethod
+    def tool_call_start(cls, call_id: str, name: str, arguments: dict[str, Any]) -> AgentEvent:
+        """Creates an event signaling the start of a tool call."""
+        return cls(
+            type=AgentEventType.TOOL_CALL_START,
+            data={
+                "call_id": call_id, 
+                "name": name, 
+                "arguments": arguments,
+            },
+        )
+
+    @classmethod
+    def tool_call_complete(cls, call_id: str,name: str, result: ToolResult) -> AgentEvent:
+        """Creates an event signaling the completion of a tool call."""
+        return cls(
+            type=AgentEventType.TOOL_CALL_COMPLETE,
+            data={
+                "call_id": call_id, 
+                "name": name,
+                "success": result.success,
+                "output": result.output,
+                "error": result.error,
+                "metadata": result.metadata,
+                "truncated": result.truncated,
+            },
         )
 
     
