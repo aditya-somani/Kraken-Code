@@ -71,7 +71,7 @@ class CLI:
         final_response: str | None = None
 
         async for event in self.agent.run(message):
-            print(event)
+            # print(event)
             if event.type == AgentEventType.TEXT_DELTA:
                 content = event.data.get("content", "")
                 if not assistant_streaming:
@@ -96,7 +96,13 @@ class CLI:
                 if not tool:
                     tool_kind = None
                 
-                
+                tool_kind = tool.kind.value
+                self.tui.tool_call_start(
+                    call_id=event.data.get("call_id", ""),
+                    name=tool_name,
+                    tool_kind=tool_kind,
+                    arguments=event.data.get("arguments", {}),
+                )
 
         return final_response
 

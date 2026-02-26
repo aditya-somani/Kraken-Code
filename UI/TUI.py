@@ -6,7 +6,8 @@ terminal experience, including custom themes for different agent states
 and tool interactions.
 """
 
-from distro import name
+from pathlib import Path
+from rich import box
 from rich.console import Console
 from rich.theme import Theme
 from rich.text import Text
@@ -14,6 +15,7 @@ from rich.rule import Rule
 from typing import Any
 from rich.panel import Panel
 from rich.table import Table
+from utils.path import resolve_path
 
 AGENT_THEME = Theme(
     {
@@ -83,6 +85,7 @@ class TUI:
         self.console = _console or get_console()
         self._assistant_stream_open = False
         self._tool_args_by_call_id: dict[str, dict[str, Any]] = {} # Caches the arguments for each tool call by its ID.
+        self.cwd: Path = Path.cwd()
 
     def begin_assitant(self) -> None:
         """
@@ -137,7 +140,7 @@ class TUI:
                 seen.add(key)
 
         remaining_keys = set(args.keys() - seen)
-        ordered.extend((key, args[key] for key in remaining_keys))
+        ordered.extend((key, args[key]) for key in remaining_keys)
         return ordered
 
     def _render_args_table(self,tool_name: str, args: dict[str, Any]) -> Table:
@@ -181,14 +184,27 @@ class TUI:
 
         title = Text.assemble(
             ("• ", "muted"),
-            (name, border_style + " bold"),
+            (name, f"{border_style} bold"),
             (" ", "muted"),
-            (f"#{call_id[:8]}", "muted"),   
+            (f"#{call_id[:10]}", "muted"),   
         )
 
+        display_args = dict(arguments)
+        for key in ("path", "cwd"):
+            val = display_args.get(key)
+            if isinstance(val, str) and self.cwd:
+                display_args[key] = str(resolve_path(val, self.cwd))
+
+
         panel = Panel(
-            self._render_args_table(name, arguments),
+            self._render_args_table(name, arguments) if display_args else Text("No arguments", style="muted"),
             title=title,
-            
+            title_align="left",
+            box=box.ROUNDED,
+            padding=(1,2),
+            border_style=border_style,
+            subtitle=Text("running...", style="muted"),
+            subtitle_align="right"
         )
-        
+        self.console.print() # print a newline
+        self.console.print(panel)
