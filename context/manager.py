@@ -87,16 +87,23 @@ class ContextManager:
         )
         self._messages.append(item)
 
-    def add_assistant_message(self, message: str) -> None:
+    def add_assistant_message(
+        self, 
+        message: str, 
+        tool_calls: list[dict[str, Any]] | None = None,
+        # tool_call_results: list[dict[str, Any]] = []
+    ) -> None:
         """
         Adds a new message from the assistant to the conversation history.
 
         Args:
             message: The textual content of the assistant's message.
+            tool_calls: The tool calls made by the assistant.
         """
         item = MessageItem(
             role="assistant",
             content=message or "",
+            tool_calls=tool_calls or [],
             token_count=count_tokens(message or "", self._model)
         )
         self._messages.append(item)

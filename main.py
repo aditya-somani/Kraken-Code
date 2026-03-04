@@ -5,14 +5,26 @@ It provides a command-line interface for interacting with the Kraken Code Agent,
 handling user input, streaming assistant responses, and managing the application lifecycle.
 """
 
+# Standard Library Imports
 import sys
+import os
+import asyncio
+from pathlib import Path
+from typing import Any
+
+# Third-Party Imports
+import click
+import dotenv
+
+# Local Application Imports
 from UI.TUI import get_console, TUI
 from client.llm_client import LLMClient
-from typing import Any
 from agent.event import AgentEventType
-import asyncio
 from agent.agent import Agent
-import click
+
+# Load environment variables
+dotenv.load_dotenv()
+
 # Click natively does not support asynchronous functions.
 # We use this wrapper (middleman/middle function) to pause and wait for the final result, 
 # ensuring Click receives the actual output rather than a raw coroutine object.
@@ -50,6 +62,43 @@ class CLI:
         async with Agent() as agent:
             self.agent = agent
             return await self._process_message(message)
+
+    async def run_interactive(self) -> str | None:
+        """
+        Runs an interactive loop with the Agent.
+
+        This method allows the user to continuously interact with the Agent
+        by entering prompts and receiving responses until the user decides to exit.
+
+        Returns:
+            The final textual response from the assistant, or None if failed.
+        """
+        self.tui.print_welcome(
+            title="Kraken Code",
+            lines=[
+                f"Model: {os.getenv('MODEL')}",
+                f"CWD: {Path.cwd()}",
+                "Commands: /help /config /approval /model /exit"
+            ]
+        )
+
+        async with Agent() as agent:
+            self.agent = agent
+            
+            while True:
+                try:
+                    user_input = console.input("[cyan bold]❯ [/cyan bold]").strip()
+                    if not user_input:
+                        continue
+
+                    await self._process_message(user_input)
+
+                except KeyboardInterrupt:
+                    console.print("\n[dim]Use /exit to quit[\dim]")
+                except EOFError:
+                    break
+
+        console.print("\n[dim]Exiting Kraken Code...[/dim]")
 
     def _get_tool_kind(self, tool_name: str) -> str | None:
         """
@@ -154,6 +203,8 @@ def main(
         result = asyncio.run(cli.run_single(prompt))
         if result is None:
             sys.exit(1)
+    else:
+        asyncio.run(cli.run_interactive())
 
 if __name__ == "__main__":
     main()

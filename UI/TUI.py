@@ -106,8 +106,10 @@ class TUI:
 
         Prints a rule line to visually separate the assistant's turn.
         """
-        self.console.print()
-        self.console.print(Rule(Text("Kraken", style="assistant")))
+        # self.console.print()
+        # self.console.print(Rule(Text("Kraken", style="assistant")))
+        
+        self.console.print("[green bold]❯ [/green bold]", end="")
         self._assistant_stream_open = True
 
     def end_assistant(self) -> None:
@@ -307,6 +309,26 @@ class TUI:
             ".xml": "xml",
             ".sql": "sql",
         }.get(suffix, "text")
+
+    def print_welcome(self, title: str, lines: list[str]) -> None:
+        """
+        Prints a welcome message to the user.
+
+        Args:
+            title: The title of the welcome message.
+            lines: The lines of the welcome message.
+        """
+        body = "\n".join(lines)
+        self.console.print(
+            Panel(
+                Text(body, style="code"),
+                title=Text(title, style="highlight"),
+                title_align="left",
+                border_style="border",
+                padding=(1,2),
+                box=box.ROUNDED,
+            )
+        )
 
     def tool_call_complete(
         self,

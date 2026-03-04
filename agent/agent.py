@@ -13,6 +13,7 @@ from client.llm_client import LLMClient
 from client.response import StreamEventType, ToolResultMessage, ToolCall
 from context.manager import ContextManager
 from tools.builtin.registry import create_default_registry
+import json
 
 class Agent:
     """
@@ -98,6 +99,19 @@ class Agent:
 
         self.context_manager.add_assistant_message(
             response_text or None,
+            tool_calls=[
+                {
+                    "id": tool_call.call_id,
+                    "type": "function",
+                    "function": {
+                        "name": tool_call.name,
+                        "arguments": json.dumps(tool_call.arguments),
+                    },
+                }
+                for tool_call in tool_calls
+            ] 
+            if tool_calls 
+            else None
         )
         if response_text:
             yield AgentEvent.text_complete(response_text)
