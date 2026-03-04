@@ -51,6 +51,22 @@ class CLI:
             self.agent = agent
             return await self._process_message(message)
 
+    def _get_tool_kind(self, tool_name: str) -> str | None:
+        """
+        Gets the kind of a tool by its name.
+
+        Args:
+            tool_name: The name of the tool.
+
+        Returns:
+            The kind of the tool, or None if the tool is not found.
+        """
+        tool = self.agent.tool_registry.get(tool_name)
+        if not tool:
+            return None
+        else:
+            return tool.kind.value
+
     async def _process_message(self, message: str) -> str | None:
         """
         Processes a message by streaming events from the Agent.
@@ -91,17 +107,24 @@ class CLI:
 
             elif event.type == AgentEventType.TOOL_CALL_START:
                 tool_name = event.data.get("name", "Unknown tool")
-                tool_kind = None
-                tool = self.agent.tool_registry.get(tool_name)
-                if not tool:
-                    tool_kind = None
-                
-                tool_kind = tool.kind.value
                 self.tui.tool_call_start(
                     call_id=event.data.get("call_id", ""),
                     name=tool_name,
-                    tool_kind=tool_kind,
+                    tool_kind=self._get_tool_kind(tool_name),
                     arguments=event.data.get("arguments", {}),
+                )
+
+            elif event.type == AgentEventType.TOOL_CALL_COMPLETE:
+                tool_name = event.data.get("name", "Unknown tool")
+                self.tui.tool_call_complete(
+                    call_id=event.data.get("call_id", ""),
+                    name=tool_name,
+                    tool_kind=self._get_tool_kind(tool_name),
+                    success=event.data.get("success", False),
+                    output=event.data.get("output", ""),
+                    error=event.data.get("error", None),
+                    metadata=event.data.get("metadata", None),
+                    truncated=event.data.get("truncated", False),
                 )
 
         return final_response

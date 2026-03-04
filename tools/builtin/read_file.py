@@ -110,7 +110,7 @@ class ReadFileTool(Tool):
             formatted_lines: list[str] = []
 
             for i, line in enumerate(selected_lines, start=start_idx):
-                formatted_lines.append(f"{i:6}: {line}")
+                formatted_lines.append(f"{i:6}| {line}")
 
             output = "\n".join(formatted_lines)
             token_count = count_tokens(output, model=os.getenv("MODEL"))
@@ -127,7 +127,7 @@ class ReadFileTool(Tool):
             metadata_lines = []
             if start_idx > 0 or end_idx < total_lines:
                 metadata_lines.append(
-                    f"Lines {start_idx + 1} to {end_idx} of {total_lines}"
+                    f"Showing lines {start_idx + 1}-{end_idx} of {total_lines}" # This is the format that the UI expects - Used downstream(regex search for "Showing lines x-y of z")
                 )
 
             if metadata_lines:
